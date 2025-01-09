@@ -1,3 +1,4 @@
+import ipaddress
 import math
 import secrets
 import socket
@@ -109,18 +110,25 @@ def check_port(port: int) -> bool:
 
 def get_public_ip():
     try:
-        return requests.get('https://api.ipify.org?format=json&ipv=4', timeout=5).json()['ip']
-    except (requests.exceptions.RequestException,
-            requests.exceptions.RequestException,
-            KeyError) as e:
+        resp = requests.get('http://api4.ipify.org/', timeout=5).text.strip()
+        if ipaddress.IPv4Address(resp).is_global:
+            return resp
+    except:
+        pass
+
+    try:
+        resp = requests.get('http://ipv4.icanhazip.com/', timeout=5).text.strip()
+        if ipaddress.IPv4Address(resp).is_global:
+            return resp
+    except:
         pass
 
     try:
         requests.packages.urllib3.util.connection.HAS_IPV6 = False
-        return requests.get('https://ifconfig.io/ip', timeout=5).text.strip()
-    except (requests.exceptions.RequestException,
-            requests.exceptions.RequestException,
-            KeyError) as e:
+        resp = requests.get('https://ifconfig.io/ip', timeout=5).text.strip()
+        if ipaddress.IPv4Address(resp).is_global:
+            return resp
+    except requests.exceptions.RequestException:
         pass
     finally:
         requests.packages.urllib3.util.connection.HAS_IPV6 = True
@@ -128,7 +136,9 @@ def get_public_ip():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(('8.8.8.8', 80))
-        return sock.getsockname()[0]
+        resp = sock.getsockname()[0]
+        if ipaddress.IPv4Address(resp).is_global:
+            return resp
     except (socket.error, IndexError):
         pass
     finally:
@@ -137,8 +147,26 @@ def get_public_ip():
     return '127.0.0.1'
 
 
+def get_public_ipv6():
+    try:
+        resp = requests.get('http://api6.ipify.org/', timeout=5).text.strip()
+        if ipaddress.IPv6Address(resp).is_global:
+            return '[%s]' % resp
+    except:
+        pass
+
+    try:
+        resp = requests.get('http://ipv6.icanhazip.com/', timeout=5).text.strip()
+        if ipaddress.IPv6Address(resp).is_global:
+            return '[%s]' % resp
+    except:
+        pass
+
+    return '[::1]'
+
+
 def readable_size(size_bytes):
-    if size_bytes == 0:
+    if size_bytes <= 0:
         return "0 B"
     size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
     i = int(math.floor(math.log(size_bytes, 1024)))

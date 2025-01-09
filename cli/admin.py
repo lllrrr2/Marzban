@@ -1,16 +1,18 @@
 from typing import Optional, Union
 
 import typer
-from rich.table import Table
+from decouple import UndefinedValueError, config
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from decouple import config, UndefinedValueError
 
-from app.db import GetDB
-from app.db import crud
+from app.db import GetDB, crud
 from app.db.models import Admin, User
 from app.models.admin import AdminCreate, AdminPartialModify
+from app.utils.system import readable_size
+
 from . import utils
 
 app = typer.Typer(no_args_is_help=True)
@@ -29,9 +31,21 @@ def validate_telegram_id(value: Union[int, str]) -> Union[int, None]:
 def validate_discord_webhook(value: str) -> Union[str, None]:
     if not value or value == "0":
         return ""
-    if not value.startswith("https://discord.com"):
-        utils.error("Discord webhook must start with 'https://discord.com'")
+    if not value.startswith("https://discord.com/api/webhooks/"):
+        utils.error("Discord webhook must start with 'https://discord.com/api/webhooks/'")
     return value
+
+
+def calculate_admin_usage(admin_id: int) -> str:
+    with GetDB() as db:
+        usage = db.query(func.sum(User.used_traffic)).filter_by(admin_id=admin_id).first()[0]
+        return readable_size(int(usage or 0))
+
+
+def calculate_admin_reseted_usage(admin_id: int) -> str:
+    with GetDB() as db:
+        usage = db.query(func.sum(User.reseted_usage)).filter_by(admin_id=admin_id).scalar()
+        return readable_size(int(usage or 0))
 
 
 @app.command(name="list")
@@ -44,9 +58,13 @@ def list_admins(
     with GetDB() as db:
         admins: list[Admin] = crud.get_admins(db, offset=offset, limit=limit, username=username)
         utils.print_table(
-            table=Table("Username", "Is sudo", "Created at", "Telegram ID", "Discord Webhook"),
+            table=Table("Username", 'Usage', 'Reseted usage', "Users Usage", "Is sudo",
+                        "Created at", "Telegram ID", "Discord Webhook"),
             rows=[
                 (str(admin.username),
+                 calculate_admin_usage(admin.id),
+                 calculate_admin_reseted_usage(admin.id),
+                 readable_size(admin.users_usage),
                  "✔️" if admin.is_sudo else "✖️",
                  utils.readable_datetime(admin.created_at),
                  str(admin.telegram_id or "✖️"),
